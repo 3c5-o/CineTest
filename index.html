@@ -26,6 +26,9 @@ button{cursor:pointer}
 .title{font-size:20px;font-weight:850;letter-spacing:.2px}
 .subtitle{font-size:11px;color:var(--muted);margin-top:2px}
 .live{display:flex;align-items:center;gap:7px;color:#c9d1df;font-size:11px;background:var(--panel);border:1px solid var(--line);padding:7px 10px;border-radius:999px}
+.head-actions{display:flex;align-items:center;gap:7px}
+.mini-action{border:1px solid var(--line);background:var(--panel);color:#fff;border-radius:12px;padding:8px 10px;font-size:11px}
+.mini-action:active{transform:scale(.97)}
 .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 14px var(--ok)}
 .search{margin-top:12px;position:relative}
 .search input{width:100%;border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:15px;padding:12px 14px 12px 42px;outline:none;transition:.2s}
@@ -83,7 +86,7 @@ button{cursor:pointer}
 .continue-bar span{height:100%;display:block;background:var(--accent)}
 
 .bottom{position:fixed;bottom:0;left:0;right:0;z-index:35;background:rgba(9,11,17,.94);backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom))}
-.bottom .inner{max-width:980px;margin:auto;display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.bottom .inner{max-width:980px;margin:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 .nav{border:0;background:transparent;color:var(--muted);padding:10px;border-radius:14px}
 .nav.active{color:#fff;background:var(--soft);font-weight:750}
 
@@ -133,6 +136,26 @@ button{cursor:pointer}
 .next.show{display:inline-block}
 .resume-toast{position:absolute;right:14px;bottom:76px;z-index:5;background:#151a24;border:1px solid #2a3244;color:#fff;padding:10px 12px;border-radius:12px;font-size:11px;opacity:0;transform:translateY(8px);transition:.25s;pointer-events:none}
 .resume-toast.show{opacity:1;transform:none}
+.favorite-btn{border:1px solid var(--line);background:var(--panel);color:#fff;border-radius:14px;padding:12px 14px;font-weight:750;margin-top:10px;width:100%}
+.favorite-btn.active{background:#2b224f;border-color:#6f56e8;color:#fff}
+.request-form{display:grid;gap:12px;padding:4px 16px 0}
+.field{display:grid;gap:7px}
+.field label{font-size:12px;color:#c7cfdb}
+.field input,.field select,.field textarea{width:100%;border:1px solid var(--line);background:var(--panel);color:#fff;border-radius:13px;padding:12px;outline:none}
+.field textarea{min-height:88px;resize:vertical}
+.form-note{font-size:11px;color:var(--muted);line-height:1.7}
+.request-result{display:none;padding:12px;border:1px solid var(--line);background:var(--panel);border-radius:13px;font-size:12px;line-height:1.8}
+.request-result.show{display:block}
+.request-list{display:grid;gap:9px;margin-top:16px}
+.request-item{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px}
+.request-row{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.request-code{font-size:11px;color:#b8c0cd;margin-top:5px}
+.status-pill{font-size:10px;border-radius:999px;padding:5px 8px;background:var(--soft);white-space:nowrap}
+.status-new{color:#d7ceff}.status-reviewing{color:#ffd989}.status-added{color:#8ee8b9}.status-rejected{color:#ff9baa}.status-duplicate{color:#b7bfcc}
+.retry{margin-top:12px;border:1px solid #ffffff25;background:#171b24;color:#fff;border-radius:12px;padding:9px 13px}
+.offline-banner{display:none;margin:0 16px 12px;border:1px solid #6c5223;background:#2a2111;color:#f2d994;border-radius:12px;padding:9px 12px;font-size:11px}
+.offline-banner.show{display:block}
+.code-tag{direction:ltr;unicode-bidi:isolate;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
 .hidden{display:none!important}
 </style>
 </head>
@@ -143,11 +166,13 @@ button{cursor:pointer}
       <div class="head">
         <div class="logo">C</div>
         <div class="brand"><div class="title">CineTest</div><div class="subtitle">Telegram Streaming Library</div></div>
-        <div class="live"><span class="dot"></span><span id="serverLabel">متصل</span></div>
+        <div class="head-actions"><button class="mini-action" id="openRequest">طلب محتوى</button><div class="live"><span class="dot"></span><span id="serverLabel">متصل</span></div></div>
       </div>
       <div class="search"><span class="search-mark">⌕</span><input id="search" placeholder="ابحث عن فيلم أو مسلسل أو تصنيف"></div>
     </div>
   </header>
+
+  <div class="offline-banner" id="offlineBanner">أنت غير متصل بالإنترنت. بعض البيانات المحفوظة ستبقى ظاهرة، لكن التشغيل والطلبات يحتاجان اتصالًا.</div>
 
   <section class="hero" id="hero">
     <div class="hero-bg" id="heroBg"></div>
@@ -187,6 +212,11 @@ button{cursor:pointer}
       <div class="section-head"><div><h2>كل المسلسلات</h2><p>اختر مسلسلًا ثم الموسم والحلقة</p></div></div>
       <div class="grid" id="allSeries"></div>
     </section>
+
+    <section class="section page hidden" id="page-mylist">
+      <div class="section-head"><div><h2>قائمتي</h2><p>الأفلام والمسلسلات المحفوظة على هذا الجهاز</p></div><span class="count" id="favoriteCount"></span></div>
+      <div class="grid" id="myListGrid"></div>
+    </section>
   </main>
 </div>
 
@@ -194,11 +224,26 @@ button{cursor:pointer}
   <button class="nav active" data-page="home">الرئيسية</button>
   <button class="nav" data-page="movies">الأفلام</button>
   <button class="nav" data-page="series">المسلسلات</button>
+  <button class="nav" data-page="mylist">قائمتي</button>
 </div></nav>
 
 <div class="modal" id="detailModal"><div class="sheet">
   <div class="sheet-head"><strong>التفاصيل</strong><button class="close" id="closeDetail">×</button></div>
   <div class="detail" id="detailBody"></div>
+</div></div>
+
+<div class="modal" id="requestModal"><div class="sheet">
+  <div class="sheet-head"><strong>طلب فيلم أو مسلسل</strong><button class="close" id="closeRequest">×</button></div>
+  <div class="request-form">
+    <div class="field"><label>نوع الطلب</label><select id="requestType"><option value="movie">فيلم</option><option value="series">مسلسل</option></select></div>
+    <div class="field"><label>اسم الفيلم أو المسلسل</label><input id="requestTitle" maxlength="160" placeholder="اكتب الاسم بدقة"></div>
+    <div class="field"><label>ملاحظة اختيارية</label><textarea id="requestNote" maxlength="500" placeholder="مثلاً: الموسم المطلوب أو سنة الإصدار"></textarea></div>
+    <div class="form-note">يمكن إرسال 5 طلبات خلال 24 ساعة من هذا الجهاز. ستظهر حالة الطلب هنا بعد الإرسال.</div>
+    <button class="play" id="submitRequest">إرسال الطلب</button>
+    <div class="request-result" id="requestResult"></div>
+    <div class="section-head" style="margin-top:8px"><div><h2>طلباتي</h2><p>آخر الطلبات من هذا الجهاز</p></div><button class="mini-action" id="refreshRequests">تحديث</button></div>
+    <div class="request-list" id="requestList"><div class="empty">لا توجد طلبات بعد.</div></div>
+  </div>
 </div></div>
 
 <div class="player-modal" id="playerModal">
@@ -210,7 +255,7 @@ button{cursor:pointer}
     <div class="video-box">
       <video id="player" class="player" controls playsinline preload="metadata"></video>
       <div class="loader" id="loader"><div class="spinner"></div></div>
-      <div class="player-error" id="playerError"><div><strong>تعذر تشغيل الفيديو</strong><div class="meta" style="margin-top:8px">تحقق من اتصال الـGateway ثم حاول مرة أخرى.</div></div></div>
+      <div class="player-error" id="playerError"><div><strong>تعذر تشغيل الفيديو</strong><div class="meta" style="margin-top:8px">تحقق من اتصال الـGateway ثم حاول مرة أخرى.</div><button class="retry" id="retryPlayer">إعادة المحاولة</button></div></div>
       <div class="resume-toast" id="resumeToast">تم استكمال المشاهدة</div>
     </div>
     <div class="player-tools">
@@ -229,10 +274,46 @@ const SUPABASE_URL="https://uaphmjpnxrzvvhalpobr.supabase.co";
 const PUBLISHABLE_KEY="sb_publishable_E1vr67zwi5R25xvr5righw_Z_JA6CeF";
 const GATEWAY=SUPABASE_URL+"/functions/v1/telegram-gateway";
 const WATCH_PREFIX="ct-watch:";
+const FAVORITES_KEY="ct-favorites";
+const REQUESTER_KEY="ct-requester-key";
+const SPEED_KEY="ct-playback-speed";
 
 const state={movies:[],series:[],query:"",genre:"",currentWatch:null,nextAction:null};
 const $=s=>document.querySelector(s);
-const $$=s=>[...document.querySelectorAll(s)];
+const $=s=>[...document.querySelectorAll(s)];
+
+function requesterKey(){
+  let k=localStorage.getItem(REQUESTER_KEY);
+  if(k&&k.length>=20)return k;
+  const a=new Uint8Array(24);crypto.getRandomValues(a);
+  k=Array.from(a,x=>x.toString(16).padStart(2,"0")).join("");
+  localStorage.setItem(REQUESTER_KEY,k);return k;
+}
+function favorites(){
+  try{const v=JSON.parse(localStorage.getItem(FAVORITES_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return []}
+}
+function isFavorite(type,id){return favorites().some(x=>x.type===type&&x.id===id)}
+function toggleFavorite(type,id){
+  const list=favorites(),i=list.findIndex(x=>x.type===type&&x.id===id);
+  if(i>=0)list.splice(i,1);else list.unshift({type,id,updated:Date.now()});
+  localStorage.setItem(FAVORITES_KEY,JSON.stringify(list.slice(0,200)));
+  renderMyList();render();
+  return i<0;
+}
+function renderMyList(){
+  const entries=favorites(),items=[];
+  entries.forEach(f=>{
+    const x=(f.type==="movie"?state.movies:state.series).find(i=>i.id===f.id);
+    if(x)items.push({item:x,type:f.type});
+  });
+  $("#favoriteCount").textContent=items.length+" محفوظ";
+  $("#myListGrid").innerHTML=items.length?items.map(x=>card(x.item,x.type)).join(""):'<div class="empty">قائمتك فارغة. افتح أي فيلم أو مسلسل واضغط إضافة إلى قائمتي.</div>';
+  bindCards();
+  renderMyList();
+}
+function statusArabic(s){
+  return ({new:"جديد",reviewing:"قيد المراجعة",added:"تمت الإضافة",rejected:"مرفوض",duplicate:"مكرر"})[s]||s;
+}
 
 async function rest(table,query){
   const r=await fetch(SUPABASE_URL+"/rest/v1/"+table+"?"+query,{headers:{apikey:PUBLISHABLE_KEY,Accept:"application/json"}});
@@ -275,7 +356,7 @@ function card(item,type){
   const label=type==="movie"?"فيلم":"مسلسل";
   const pct=type==="movie"?progressFor("movie",item.id):0;
   return `<article class="card" data-type="${type}" data-id="${item.id}">
-    <div class="poster"><div class="ph">${label}</div><span class="badge">${label}</span><img src="${poster(pt,item.id)}" alt="" loading="lazy" onerror="this.style.display='none'"></div>
+    <div class="poster"><div class="ph">${label}</div><span class="badge">${isFavorite(type,item.id)?"محفوظ":label}</span><img src="${poster(pt,item.id)}" alt="" loading="lazy" onerror="this.style.display='none'"></div>
     <div class="info"><div class="name">${esc(item.title)}</div><div class="meta">${esc(item.release_year||"")} ${item.genre?"• "+esc(item.genre):""}</div>${pct>0?`<div class="progress-mini"><span style="width:${pct}%"></span></div>`:""}</div>
   </article>`;
 }
@@ -334,8 +415,8 @@ function renderContinue(){
 async function load(){
   try{
     const [m,s]=await Promise.all([
-      rest("movies","select=id,title,description,release_year,genre,created_at&is_published=eq.true&order=created_at.desc"),
-      rest("series","select=id,title,description,release_year,genre,created_at&is_published=eq.true&order=created_at.desc")
+      rest("movies","select=id,content_code,title,description,release_year,genre,is_featured,created_at&is_published=eq.true&order=created_at.desc"),
+      rest("series","select=id,content_code,title,description,release_year,genre,is_featured,created_at&is_published=eq.true&order=created_at.desc")
     ]);
     state.movies=m;state.series=s;
     renderGenres();render();setupHero();renderContinue();
@@ -349,7 +430,7 @@ async function health(){
     const r=await fetch(GATEWAY+"?health=1",{cache:"no-store"});const j=await r.json();
     const ok=j.botConfigured&&j.secretConfigured;
     $("#serverLabel").textContent=ok?"متصل":"غير متصل";
-    $("#status").textContent=ok?`البوت جاهز • بث Telegram • الحد الحالي ${j.maxVideoMB||100}MB`:"تحقق من إعداد البوت";
+    $("#status").textContent=ok?`البوت جاهز • بث Telegram • الحد الحالي ${j.maxVideoMB||500}MB`:"تحقق من إعداد البوت";
   }catch{
     $("#serverLabel").textContent="غير متصل";
     $("#status").textContent="تعذر الاتصال ببوابة Telegram";
@@ -370,7 +451,7 @@ function openPlayer(opts){
   $("#loader").classList.add("show");
   $("#playerStatus").textContent="جاري الاتصال بـ Telegram...";
   v.src=state.currentWatch.src;
-  v.playbackRate=Number($("#speed").value)||1;
+  const savedSpeed=Number(localStorage.getItem(SPEED_KEY)||$("#speed").value)||1; $("#speed").value=String(savedSpeed); v.playbackRate=savedSpeed;
   $("#playerModal").classList.add("open");
   v.load();
   v.play().catch(()=>{});
@@ -402,9 +483,17 @@ pv.addEventListener("ended",()=>{
   renderContinue();
   if(state.nextAction){$("#nextEpisode").classList.add("show")}
 });
+$("#retryPlayer").onclick=()=>{
+  const w=state.currentWatch;if(!w)return;
+  const at=pv.currentTime||readWatch(w.type,w.id)?.time||0;
+  $("#playerError").classList.remove("show");$("#loader").classList.add("show");
+  pv.src=w.src;pv.load();
+  pv.addEventListener("loadedmetadata",()=>{if(at>0&&at<pv.duration-2)pv.currentTime=at},{once:true});
+  pv.play().catch(()=>{});
+};
 $("#back10").onclick=()=>pv.currentTime=Math.max(0,pv.currentTime-10);
 $("#forward10").onclick=()=>pv.currentTime=Math.min(pv.duration||Infinity,pv.currentTime+10);
-$("#speed").onchange=e=>pv.playbackRate=Number(e.target.value)||1;
+$("#speed").onchange=e=>{const n=Number(e.target.value)||1;pv.playbackRate=n;localStorage.setItem(SPEED_KEY,String(n))};
 $("#pip").onclick=async()=>{
   try{
     if(document.pictureInPictureElement)await document.exitPictureInPicture();
@@ -419,11 +508,13 @@ async function openDetail(type,id){
   $("#detailModal").classList.add("open");
   const pt=type==="movie"?"movie_poster":"series_poster";
   if(type==="movie"){
-    $("#detailBody").innerHTML=`<div class="detail-layout"><div class="detail-poster"><img src="${poster(pt,item.id)}" alt=""></div><div><h2>${esc(item.title)}</h2><div class="tags"><span class="tag">${esc(item.release_year||"—")}</span><span class="tag">${esc(item.genre||"غير مصنف")}</span><span class="tag">Telegram Stream</span></div><p>${esc(item.description||"لا يوجد وصف.")}</p></div></div><button class="play" id="playMovie">مشاهدة الآن</button>`;
+    $("#detailBody").innerHTML=`<div class="detail-layout"><div class="detail-poster"><img src="${poster(pt,item.id)}" alt=""></div><div><h2>${esc(item.title)}</h2><div class="tags"><span class="tag">${esc(item.release_year||"—")}</span><span class="tag">${esc(item.genre||"غير مصنف")}</span><span class="tag code-tag">${esc(item.content_code||"")}</span><span class="tag">Telegram Stream</span></div><p>${esc(item.description||"لا يوجد وصف.")}</p></div></div><button class="play" id="playMovie">مشاهدة الآن</button><button class="favorite-btn ${isFavorite("movie",item.id)?"active":""}" id="favoriteItem">${isFavorite("movie",item.id)?"إزالة من قائمتي":"إضافة إلى قائمتي"}</button>`;
     $("#playMovie").onclick=()=>openPlayer({title:item.title,src:video("movie_video",item.id),type:"movie",id:item.id,poster:poster("movie_poster",item.id)});
+    $("#favoriteItem").onclick=()=>{toggleFavorite("movie",item.id);openDetail("movie",item.id)};
     return;
   }
-  $("#detailBody").innerHTML=`<div class="detail-layout"><div class="detail-poster"><img src="${poster(pt,item.id)}" alt=""></div><div><h2>${esc(item.title)}</h2><div class="tags"><span class="tag">${esc(item.release_year||"—")}</span><span class="tag">${esc(item.genre||"غير مصنف")}</span></div><p>${esc(item.description||"لا يوجد وصف.")}</p></div></div><div class="season-tabs" id="seasonTabs"></div><div class="episodes" id="episodes"><div class="empty">جاري تحميل الحلقات...</div></div>`;
+  $("#detailBody").innerHTML=`<div class="detail-layout"><div class="detail-poster"><img src="${poster(pt,item.id)}" alt=""></div><div><h2>${esc(item.title)}</h2><div class="tags"><span class="tag">${esc(item.release_year||"—")}</span><span class="tag">${esc(item.genre||"غير مصنف")}</span><span class="tag code-tag">${esc(item.content_code||"")}</span></div><p>${esc(item.description||"لا يوجد وصف.")}</p></div></div><button class="favorite-btn ${isFavorite("series",item.id)?"active":""}" id="favoriteItem">${isFavorite("series",item.id)?"إزالة من قائمتي":"إضافة إلى قائمتي"}</button><div class="season-tabs" id="seasonTabs"></div><div class="episodes" id="episodes"><div class="empty">جاري تحميل الحلقات...</div></div>`;
+  $("#favoriteItem").onclick=()=>{toggleFavorite("series",item.id);openDetail("series",item.id)};
   try{
     const seasons=await rest("seasons","select=id,season_number,title&series_id=eq."+id+"&order=season_number.asc");
     if(!seasons.length){$("#episodes").innerHTML='<div class="empty">لا توجد حلقات بعد.</div>';return}
@@ -431,8 +522,8 @@ async function openDetail(type,id){
     async function showEpisodes(seasonId,btn){
       $$(".season-btn").forEach(b=>b.classList.remove("active"));btn?.classList.add("active");
       $("#episodes").innerHTML='<div class="empty">جاري التحميل...</div>';
-      const eps=await rest("episodes","select=id,episode_number,title,description&season_id=eq."+seasonId+"&is_published=eq.true&order=episode_number.asc");
-      $("#episodes").innerHTML=eps.length?eps.map((e,i)=>`<div class="episode"><div><strong>${esc(e.title||("الحلقة "+e.episode_number))}</strong><div class="meta">الحلقة ${e.episode_number}</div></div><button data-i="${i}">تشغيل</button></div>`).join(""):'<div class="empty">لا توجد حلقات.</div>';
+      const eps=await rest("episodes","select=id,content_code,episode_number,title,description&season_id=eq."+seasonId+"&is_published=eq.true&order=episode_number.asc");
+      $("#episodes").innerHTML=eps.length?eps.map((e,i)=>`<div class="episode"><div><strong>${esc(e.title||("الحلقة "+e.episode_number))}</strong><div class="meta">الحلقة ${e.episode_number} • <span class="code-tag">${esc(e.content_code||"")}</span></div></div><button data-i="${i}">تشغيل</button></div>`).join(""):'<div class="empty">لا توجد حلقات.</div>';
       $$("#episodes button[data-i]").forEach(b=>{
         const i=Number(b.dataset.i),e=eps[i],n=eps[i+1];
         b.onclick=()=>openPlayer({
@@ -448,6 +539,51 @@ async function openDetail(type,id){
   }catch(e){$("#episodes").innerHTML='<div class="empty">تعذر تحميل الحلقات.</div>';console.error(e)}
 }
 
+async function loadRequests(){
+  const box=$("#requestList");
+  box.innerHTML='<div class="empty">جاري تحميل الطلبات...</div>';
+  try{
+    const r=await fetch(GATEWAY+"?action=request_status&requester_key="+encodeURIComponent(requesterKey()),{cache:"no-store"});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||"request status failed");
+    const rows=j.requests||[];
+    box.innerHTML=rows.length?rows.map(x=>`<div class="request-item"><div class="request-row"><strong>${esc(x.title)}</strong><span class="status-pill status-${esc(x.status)}">${statusArabic(x.status)}</span></div><div class="request-code"><span class="code-tag">${esc(x.request_code)}</span> • ${x.request_type==="movie"?"فيلم":"مسلسل"}</div></div>`).join(""):'<div class="empty">لا توجد طلبات بعد.</div>';
+  }catch(e){
+    box.innerHTML='<div class="empty">تعذر تحميل حالة الطلبات.</div>';
+    console.error(e);
+  }
+}
+function openRequestModal(){
+  $("#requestModal").classList.add("open");
+  $("#requestResult").classList.remove("show");
+  loadRequests();
+}
+$("#openRequest").onclick=openRequestModal;
+$("#closeRequest").onclick=()=>$("#requestModal").classList.remove("open");
+$("#requestModal").onclick=e=>{if(e.target.id==="requestModal")$("#requestModal").classList.remove("open")};
+$("#refreshRequests").onclick=loadRequests;
+$("#submitRequest").onclick=async()=>{
+  const btn=$("#submitRequest"),title=$("#requestTitle").value.trim(),type=$("#requestType").value,note=$("#requestNote").value.trim(),res=$("#requestResult");
+  if(title.length<2){res.textContent="اكتب اسم الفيلم أو المسلسل.";res.classList.add("show");return}
+  btn.disabled=true;btn.textContent="جاري الإرسال...";
+  try{
+    const r=await fetch(GATEWAY+"?action=request_content",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({request_type:type,title,note,requester_key:requesterKey()})
+    });
+    const j=await r.json();
+    if(r.status===429)throw new Error("وصلت إلى حد 5 طلبات خلال 24 ساعة.");
+    if(!r.ok)throw new Error(j.error||"تعذر إرسال الطلب");
+    const x=j.request;
+    res.innerHTML=j.duplicate?`هذا الطلب موجود مسبقًا: <span class="code-tag">${esc(x.request_code)}</span> — ${statusArabic(x.status)}`:`تم إرسال الطلب بنجاح.<br>ID الطلب: <span class="code-tag">${esc(x.request_code)}</span>`;
+    res.classList.add("show");
+    if(!j.duplicate){$("#requestTitle").value="";$("#requestNote").value=""}
+    await loadRequests();
+  }catch(e){
+    res.textContent=e.message||"تعذر إرسال الطلب.";res.classList.add("show");
+  }finally{btn.disabled=false;btn.textContent="إرسال الطلب"}
+};
+
 $("#closeDetail").onclick=()=>$("#detailModal").classList.remove("open");
 $("#detailModal").onclick=e=>{if(e.target.id==="detailModal")$("#detailModal").classList.remove("open")};
 $("#closePlayer").onclick=closePlayer;
@@ -458,6 +594,15 @@ $$(".nav").forEach(b=>b.onclick=()=>{
   scrollTo({top:0,behavior:"smooth"});
 });
 document.addEventListener("visibilitychange",()=>{if(document.hidden)saveWatch()});
+function updateNetwork(){
+  const online=navigator.onLine;
+  $("#offlineBanner").classList.toggle("show",!online);
+  if(!online)$("#serverLabel").textContent="دون اتصال";
+  else health();
+}
+window.addEventListener("online",updateNetwork);
+window.addEventListener("offline",updateNetwork);
+updateNetwork();
 load();health();
 </script>
 </body>
