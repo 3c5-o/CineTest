@@ -1,10 +1,11 @@
+import asyncio
 import os
 import re
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from telethon import TelegramClient
 
 API_ID = int(os.environ["TELEGRAM_API_ID"])
@@ -12,8 +13,13 @@ API_HASH = os.environ["TELEGRAM_API_HASH"]
 BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 CHANNEL_ID = int(os.environ["TELEGRAM_CHANNEL_ID"])
 
+MAX_CONCURRENT_STREAMS = max(1, int(os.getenv("MAX_CONCURRENT_STREAMS", "4")))
+CHUNK_SIZE = 512 * 1024
+STREAM_ACCESS_KEY = os.getenv("STREAM_ACCESS_KEY", "").strip()
+
 client = TelegramClient(None, API_ID, API_HASH)
 channel = None
+stream_slots = asyncio.Semaphore(MAX_CONCURRENT_STREAMS)
 
 
 @asynccontextmanager
@@ -33,7 +39,13 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "HEAD", "OPTIONS"],
     allow_headers=["*"],
-    expose_headers=["Content-Length", "Content-Range", "Accept-Ranges", "Content-Type"],
+    expose_headers=[
+        "Content-Length",
+        "Content-Range",
+        "Accept-Ranges",
+        "Content-Type",
+        "X-Stream-Source",
+    ],
 )
 
 
@@ -64,11 +76,28 @@ def parse_range(value: str | None, total: int):
     return start, end, True
 
 
+def authorize(request: Request):
+    if not STREAM_ACCESS_KEY:
+        return
+    if request.query_params.get("key") != STREAM_ACCESS_KEY:
+        raise HTTPException(status_code=401, detail="Unauthorized stream request")
+
+
 async def get_media_message(message_id: int):
     if channel is None:
         raise HTTPException(status_code=503, detail="Telegram gateway is starting")
 
-    message = await client.get_messages(channel, ids=message_id)
+    if not client.is_connected():
+        try:
+            await client.connect()
+        except Exception as exc:
+            raise HTTPException(status_code=503, detail="Telegram reconnect failed") from exc
+
+    try:
+        message = await client.get_messages(channel, ids=message_id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="Telegram media lookup failed") from exc
+
     if not message or not message.media or not message.file:
         raise HTTPException(status_code=404, detail="Media message not found")
 
@@ -77,8 +106,18 @@ async def get_media_message(message_id: int):
         raise HTTPException(status_code=404, detail="Media size unavailable")
 
     mime = message.file.mime_type or "application/octet-stream"
-    name = message.file.name or f"telegram-{message_id}"
+    name = (message.file.name or f"telegram-{message_id}").replace('"', "").replace("\n", " ")
     return message, size, mime, name
+
+
+@app.get("/")
+async def root():
+    return {
+        "ok": client.is_connected(),
+        "service": "cinetest-telegram-gateway",
+        "storage": "telegram",
+        "range_streaming": True,
+    }
 
 
 @app.get("/health")
@@ -87,11 +126,16 @@ async def health():
         "ok": client.is_connected(),
         "service": "cinetest-telegram-gateway",
         "storage": "telegram",
+        "range_streaming": True,
+        "chunk_size_kb": CHUNK_SIZE // 1024,
+        "max_concurrent_streams": MAX_CONCURRENT_STREAMS,
+        "access_key_enabled": bool(STREAM_ACCESS_KEY),
     }
 
 
 @app.api_route("/stream/{message_id}", methods=["GET", "HEAD"])
 async def stream(message_id: int, request: Request):
+    authorize(request)
     message, total, mime, name = await get_media_message(message_id)
     start, end, partial = parse_range(request.headers.get("range"), total)
     length = end - start + 1
@@ -100,46 +144,46 @@ async def stream(message_id: int, request: Request):
         "Accept-Ranges": "bytes",
         "Content-Type": mime,
         "Content-Length": str(length),
-        "Content-Disposition": f'inline; filename="{name.replace(chr(34), "")}"',
+        "Content-Disposition": f'inline; filename="{name}"',
         "Cache-Control": "private, max-age=0, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "X-Stream-Source": "telegram",
     }
 
     if partial:
         headers["Content-Range"] = f"bytes {start}-{end}/{total}"
 
+    status_code = 206 if partial else 200
+
     if request.method == "HEAD":
-        return JSONResponse(
-            content=None,
-            status_code=206 if partial else 200,
-            headers=headers,
-        )
+        return Response(status_code=status_code, headers=headers, media_type=mime)
 
     async def body():
-        sent = 0
         remaining = length
+        async with stream_slots:
+            try:
+                async for chunk in client.iter_download(
+                    message.media,
+                    offset=start,
+                    request_size=CHUNK_SIZE,
+                    chunk_size=CHUNK_SIZE,
+                ):
+                    if remaining <= 0 or await request.is_disconnected():
+                        break
 
-        async for chunk in client.iter_download(
-            message.media,
-            offset=start,
-            request_size=512 * 1024,
-            chunk_size=512 * 1024,
-        ):
-            if remaining <= 0:
-                break
+                    if len(chunk) > remaining:
+                        chunk = chunk[:remaining]
 
-            if len(chunk) > remaining:
-                chunk = chunk[:remaining]
-
-            sent += len(chunk)
-            remaining -= len(chunk)
-            yield chunk
-
-            if sent >= length:
-                break
+                    remaining -= len(chunk)
+                    yield chunk
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                return
 
     return StreamingResponse(
         body(),
-        status_code=206 if partial else 200,
+        status_code=status_code,
         media_type=mime,
         headers=headers,
     )
