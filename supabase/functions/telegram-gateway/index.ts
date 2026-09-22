@@ -2,7 +2,8 @@ import { createClient } from "npm:@supabase/supabase-js@2.95.0";
 
 const ADMIN_ID = "8407394858";
 const CHANNEL_ID = "-1004457227800";
-const MAX_TEST_FILE = 20 * 1024 * 1024;
+const MAX_TEST_FILE = 100 * 1024 * 1024;
+const STREAM_GATEWAY = Deno.env.get("TELEGRAM_STREAM_GATEWAY") ?? "https://cinetest-i16265gs.b4a.run";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const keyMapRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -195,11 +196,11 @@ async function message(m: any) {
       const f=getPhoto(m); if(!f) return send(chatId,"أرسل صورة.");
       const cm=await copyStorage(chatId,m.message_id,`CineTest | فيلم: ${d.title} | بوستر`);
       d.poster={...f,channel_message_id:cm}; await setSession("movie","video",d);
-      return send(chatId,"أرسل فيديو تجريبي أقل من 20MB.");
+      return send(chatId,"أرسل فيديو الفيلم. الحد الحالي للتجربة 100MB.");
     }
     if (s.step === "video") {
       const f=getVideo(m); if(!f) return send(chatId,"أرسل فيديو.");
-      if(f.file_size && f.file_size>MAX_TEST_FILE) return send(chatId,"للتجربة الأولى أرسل فيديو أقل من 20MB.");
+      if(f.file_size && f.file_size>MAX_TEST_FILE) return send(chatId,"حجم الفيديو أكبر من 100MB. الحد الحالي للتجربة 100MB.");
       const cm=await copyStorage(chatId,m.message_id,`CineTest | فيلم: ${d.title} | فيديو`);
       const {data:movie,error}=await db.from("movies").insert({
         title:d.title,description:d.description ?? "",release_year:d.release_year,genre:d.genre ?? "",is_published:true
@@ -240,10 +241,10 @@ async function message(m: any) {
     }
     if (s.step === "season_number") { const n=positive(text); if(!n)return send(chatId,"رقم الموسم غير صحيح."); d.season_number=n; await setSession("episode","episode_number",d); return send(chatId,"أرسل رقم الحلقة."); }
     if (s.step === "episode_number") { const n=positive(text); if(!n)return send(chatId,"رقم الحلقة غير صحيح."); d.episode_number=n; await setSession("episode","episode_title",d); return send(chatId,"أرسل عنوان الحلقة، أو - للاسم التلقائي."); }
-    if (s.step === "episode_title") { if(!text)return send(chatId,"أرسل العنوان."); d.episode_title=text==="-"?`الحلقة ${d.episode_number}`:text; await setSession("episode","video",d); return send(chatId,"أرسل فيديو الحلقة أقل من 20MB."); }
+    if (s.step === "episode_title") { if(!text)return send(chatId,"أرسل العنوان."); d.episode_title=text==="-"?`الحلقة ${d.episode_number}`:text; await setSession("episode","video",d); return send(chatId,"أرسل فيديو الحلقة. الحد الحالي للتجربة 100MB."); }
     if (s.step === "video") {
       const f=getVideo(m); if(!f)return send(chatId,"أرسل فيديو.");
-      if(f.file_size && f.file_size>MAX_TEST_FILE)return send(chatId,"للتجربة أرسل فيديو أقل من 20MB.");
+      if(f.file_size && f.file_size>MAX_TEST_FILE)return send(chatId,"حجم الفيديو أكبر من 100MB. الحد الحالي للتجربة 100MB.");
       const cm=await copyStorage(chatId,m.message_id,`CineTest | ${d.series_title} | موسم ${d.season_number} | حلقة ${d.episode_number}`);
       const {data:season,error:se}=await db.from("seasons").upsert({
         series_id:d.series_id,season_number:d.season_number,title:`الموسم ${d.season_number}`
@@ -282,7 +283,7 @@ async function asset(type:string,id:string) {
     if(!sr?.is_published)return null;
     entity_type="episode"; kind="video";
   } else return null;
-  const {data}=await db.from("media_assets").select("telegram_file_id,mime_type,file_size")
+  const {data}=await db.from("media_assets").select("telegram_file_id,mime_type,file_size,channel_message_id")
     .eq("entity_type",entity_type).eq("entity_id",id).eq("kind",kind).maybeSingle();
   return data ?? null;
 }
@@ -290,18 +291,27 @@ async function asset(type:string,id:string) {
 async function media(req:Request,type:string,id:string){
   const a:any=await asset(type,id);
   if(!a)return out({error:"not found"},404);
-  if(a.file_size && Number(a.file_size)>MAX_TEST_FILE)return out({error:"test limit is 20MB"},413);
+
+  const isVideo = type==="movie_video" || type==="episode_video";
+  if(isVideo){
+    if(a.file_size && Number(a.file_size)>MAX_TEST_FILE){
+      return out({error:"current test limit is 100MB"},413);
+    }
+    if(!a.channel_message_id){
+      return out({error:"Telegram channel message id is missing"},409);
+    }
+    return Response.redirect(`${STREAM_GATEWAY}/stream/${a.channel_message_id}`,307);
+  }
+
   let f:any;
   try{f=await tg("getFile",{file_id:a.telegram_file_id});}
   catch{return out({error:"Telegram getFile failed"},502);}
-  const h:Record<string,string>={};
-  const range=req.headers.get("range"); if(range)h.Range=range;
-  const up=await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${f.file_path}`,{headers:h});
+  const up=await fetch(`https://api.telegram.org/file/bot${BOT_TOKEN}/${f.file_path}`);
   const oh=new Headers(cors);
   oh.set("Content-Type",up.headers.get("content-type")||a.mime_type||"application/octet-stream");
   oh.set("Content-Disposition","inline");
-  oh.set("Cache-Control",type.includes("poster")?"public, max-age=3600":"no-store");
-  for(const k of ["content-length","content-range","accept-ranges"]){const v=up.headers.get(k);if(v)oh.set(k,v);}
+  oh.set("Cache-Control","public, max-age=3600");
+  const len=up.headers.get("content-length"); if(len)oh.set("content-length",len);
   return new Response(up.body,{status:up.status,headers:oh});
 }
 
@@ -310,7 +320,13 @@ Deno.serve(async(req:Request)=>{
   try{
     const url=new URL(req.url);
     if(req.method==="GET"&&url.searchParams.get("health")==="1"){
-      return out({ok:true,botConfigured:Boolean(BOT_TOKEN),secretConfigured:Boolean(BOT_SECRET)});
+      return out({
+        ok:true,
+        botConfigured:Boolean(BOT_TOKEN),
+        secretConfigured:Boolean(BOT_SECRET),
+        streamGateway:STREAM_GATEWAY,
+        maxVideoMB:100
+      });
     }
     if(req.method==="GET"&&url.searchParams.has("setup")){
       if(!BOT_SECRET||url.searchParams.get("setup")!==BOT_SECRET)return out({error:"unauthorized"},401);
