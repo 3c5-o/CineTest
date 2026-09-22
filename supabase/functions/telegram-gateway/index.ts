@@ -4,6 +4,7 @@ const OWNER_ID = "8407394858";
 const FALLBACK_CHANNEL_ID = "-1004457227800";
 const MAX_VIDEO_BYTES = 500 * 1024 * 1024;
 const STREAM_GATEWAY = Deno.env.get("TELEGRAM_STREAM_GATEWAY") ?? "https://cinetest-i16265gs.b4a.run";
+const STREAM_ACCESS_KEY = Deno.env.get("TELEGRAM_STREAM_ACCESS_KEY") ?? "";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const keyMapRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
@@ -561,7 +562,8 @@ async function media(type:string,id:string){
   if(isVideo){
     if(a.file_size&&Number(a.file_size)>MAX_VIDEO_BYTES)return out({error:"current limit is 500MB"},413);
     if(!a.channel_message_id)return out({error:"Telegram channel message id is missing"},409);
-    return Response.redirect(`${STREAM_GATEWAY}/stream/${a.channel_message_id}`,307);
+    const auth=STREAM_ACCESS_KEY?`?key=${encodeURIComponent(STREAM_ACCESS_KEY)}`:"";
+    return Response.redirect(`${STREAM_GATEWAY}/stream/${a.channel_message_id}${auth}`,307);
   }
   let f:any;
   try{f=await tg("getFile",{file_id:a.telegram_file_id});}
