@@ -191,10 +191,10 @@ async function copyStorage(channelKey:string,fromChatId:string|number,messageId:
   const target=await configuredChannel(channelKey,fallback);
   if(!target)return null;
   const r=await tg("copyMessage",{chat_id:target,from_chat_id:fromChatId,message_id:messageId,caption});
-  return r?.message_id??null;
+  return {message_id:r?.message_id??null,channel_id:Number(target)};
 }
 
-async function saveMedia(entity_type:string,entity_id:string,kind:string,file:any,channel_message_id:number|null){
+async function saveMedia(entity_type:string,entity_id:string,kind:string,file:any,storage:any){
   const {error}=await db.from("media_assets").upsert({
     entity_type,entity_id,kind,
     telegram_file_id:file.file_id,
@@ -202,7 +202,8 @@ async function saveMedia(entity_type:string,entity_id:string,kind:string,file:an
     mime_type:file.mime_type,
     file_name:file.file_name,
     file_size:file.file_size,
-    channel_message_id,
+    channel_message_id:storage?.message_id??null,
+    channel_id:storage?.channel_id??Number(FALLBACK_CHANNEL_ID),
   },{onConflict:"entity_type,entity_id,kind"});
   if(error)throw error;
 }
@@ -550,7 +551,7 @@ async function asset(type:string,id:string){
     entity_type="episode";kind="video";
   }else return null;
   const {data}=await db.from("media_assets")
-    .select("telegram_file_id,mime_type,file_size,channel_message_id")
+    .select("telegram_file_id,mime_type,file_size,channel_message_id,channel_id")
     .eq("entity_type",entity_type).eq("entity_id",id).eq("kind",kind).maybeSingle();
   return data??null;
 }
@@ -562,8 +563,9 @@ async function media(type:string,id:string){
   if(isVideo){
     if(a.file_size&&Number(a.file_size)>MAX_VIDEO_BYTES)return out({error:"current limit is 500MB"},413);
     if(!a.channel_message_id)return out({error:"Telegram channel message id is missing"},409);
+    const channelId=Number(a.channel_id??FALLBACK_CHANNEL_ID);
     const auth=STREAM_ACCESS_KEY?`?key=${encodeURIComponent(STREAM_ACCESS_KEY)}`:"";
-    return Response.redirect(`${STREAM_GATEWAY}/stream/${a.channel_message_id}${auth}`,307);
+    return Response.redirect(`${STREAM_GATEWAY}/stream/${channelId}/${a.channel_message_id}${auth}`,307);
   }
   let f:any;
   try{f=await tg("getFile",{file_id:a.telegram_file_id});}
