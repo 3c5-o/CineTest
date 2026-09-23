@@ -280,7 +280,7 @@ const SPEED_KEY="ct-playback-speed";
 
 const state={movies:[],series:[],query:"",genre:"",currentWatch:null,nextAction:null};
 const $=s=>document.querySelector(s);
-const $=s=>[...document.querySelectorAll(s)];
+const $$=s=>[...document.querySelectorAll(s)];
 
 function requesterKey(){
   let k=localStorage.getItem(REQUESTER_KEY);
