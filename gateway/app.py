@@ -18,15 +18,14 @@ CHUNK_SIZE = 512 * 1024
 STREAM_ACCESS_KEY = os.getenv("STREAM_ACCESS_KEY", "").strip()
 
 client = TelegramClient(None, API_ID, API_HASH)
-channel = None
+channel_cache = {}
 stream_slots = asyncio.Semaphore(MAX_CONCURRENT_STREAMS)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global channel
     await client.start(bot_token=BOT_TOKEN)
-    channel = await client.get_entity(CHANNEL_ID)
+    channel_cache[CHANNEL_ID] = await client.get_entity(CHANNEL_ID)
     yield
     await client.disconnect()
 
@@ -83,18 +82,30 @@ def authorize(request: Request):
         raise HTTPException(status_code=401, detail="Unauthorized stream request")
 
 
-async def get_media_message(message_id: int):
-    if channel is None:
-        raise HTTPException(status_code=503, detail="Telegram gateway is starting")
-
+async def get_channel(channel_id: int):
     if not client.is_connected():
         try:
             await client.connect()
         except Exception as exc:
             raise HTTPException(status_code=503, detail="Telegram reconnect failed") from exc
 
+    if channel_id in channel_cache:
+        return channel_cache[channel_id]
+
     try:
-        message = await client.get_messages(channel, ids=message_id)
+        entity = await client.get_entity(channel_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail="Telegram channel unavailable") from exc
+
+    channel_cache[channel_id] = entity
+    return entity
+
+
+async def get_media_message(channel_id: int, message_id: int):
+    entity = await get_channel(channel_id)
+
+    try:
+        message = await client.get_messages(entity, ids=message_id)
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Telegram media lookup failed") from exc
 
@@ -108,7 +119,6 @@ async def get_media_message(message_id: int):
     mime = message.file.mime_type or "application/octet-stream"
     name = (message.file.name or f"telegram-{message_id}").replace('"', "").replace("\n", " ")
     return message, size, mime, name
-
 
 @app.get("/")
 async def root():
@@ -134,9 +144,14 @@ async def health():
 
 
 @app.api_route("/stream/{message_id}", methods=["GET", "HEAD"])
-async def stream(message_id: int, request: Request):
+async def legacy_stream(message_id: int, request: Request):
+    return await stream(CHANNEL_ID, message_id, request)
+
+
+@app.api_route("/stream/{channel_id}/{message_id}", methods=["GET", "HEAD"])
+async def stream(channel_id: int, message_id: int, request: Request):
     authorize(request)
-    message, total, mime, name = await get_media_message(message_id)
+    message, total, mime, name = await get_media_message(channel_id, message_id)
     start, end, partial = parse_range(request.headers.get("range"), total)
     length = end - start + 1
 
