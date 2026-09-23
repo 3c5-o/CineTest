@@ -565,7 +565,10 @@ async function media(type:string,id:string){
     if(!a.channel_message_id)return out({error:"Telegram channel message id is missing"},409);
     const channelId=Number(a.channel_id??FALLBACK_CHANNEL_ID);
     const auth=STREAM_ACCESS_KEY?`?key=${encodeURIComponent(STREAM_ACCESS_KEY)}`:"";
-    return Response.redirect(`${STREAM_GATEWAY}/stream/${channelId}/${a.channel_message_id}${auth}`,307);
+    const path=channelId===Number(FALLBACK_CHANNEL_ID)
+      ? `/stream/${a.channel_message_id}`
+      : `/stream/${channelId}/${a.channel_message_id}`;
+    return Response.redirect(`${STREAM_GATEWAY}${path}${auth}`,307);
   }
   let f:any;
   try{f=await tg("getFile",{file_id:a.telegram_file_id});}
